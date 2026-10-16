@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tạo Sơ Đồ Nguyên Lý Cấp Điện Tự Động</title>
+  <!-- Tailwind CSS CDN cho giao diện hiện đại -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- jsPDF & svg2pdf để xuất file PDF chất lượng cao -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.3/dist/svg2pdf.umd.min.js"></script>
+  <!-- dxf-writer để xuất file AutoCAD DXF -->
+  <script src="https://cdn.jsdelivr.net/npm/dxf-writer@1.17.1/dist/dxf-writer.min.js"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 p-4 md:p-6 min-h-screen">
+  <div class="max-w-7xl mx-auto space-y-6">
+    
+    <!-- Tiêu đề -->
+    <header class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Trình Tạo Sơ Đồ Nguyên Lý Điện</h1>
+        <p class="text-sm text-slate-500 mt-1">Nhập thông số phụ tải - Tự động thiết lập sơ đồ và xuất file PDF/CAD</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="btn-render" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-sm transition">Cập nhật sơ đồ</button>
+        <button id="btn-export-pdf" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium shadow-sm transition">Xuất PDF</button>
+        <button id="btn-export-dxf" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium shadow-sm transition">Xuất AutoCAD (.DXF)</button>
+      </div>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Cột nhập thông số -->
+      <div class="lg:col-span-4 space-y-4">
+        
+        <!-- Thông số tủ & át tổng -->
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
+          <h2 class="font-semibold text-base text-slate-800 border-b pb-2">1. Thông số Tủ & Nguồn Vào</h2>
+          
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Tên tủ điện</label>
+            <input type="text" id="panel-name" value="TỦ NHÁNH 1" class="w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Át tổng (Incomer)</label>
+            <input type="text" id="main-breaker" value="MCB 3P 100A 10kA" class="w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Dây cáp nguồn vào</label>
+            <input type="text" id="main-cable" value="CU/XLPE/PVC (4x10) + E(1x6) mm2" class="w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Cấu hình nhanh số lượng nhánh -->
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
+          <div class="flex justify-between items-center border-b pb-2">
+            <h2 class="font-semibold text-base text-slate-800">2. Danh sách Át nhánh</h2>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-slate-500">Số lượng:</span>
+              <input type="number" id="quick-count" min="1" max="24" value="8" class="w-16 border rounded px-2 py-0.5 text-sm text-center">
+              <button id="btn-apply-count" class="text-xs bg-slate-200 hover:bg-slate-300 px-2 py-1 rounded">Tạo mẫu</button>
+            </div>
+          </div>
+          
+          <div id="branches-list" class="space-y-3 max-h-[360px] overflow-y-auto pr-1">
+            <!-- Render động bằng JavaScript -->
+          </div>
+
+          <button id="btn-add-branch" class="w-full py-2 border border-dashed border-blue-400 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50 transition">+ Thêm 1 nhánh</button>
+        </div>
+
+      </div>
+
+      <!-- Cột Preview sơ đồ bản vẽ -->
+      <div class="lg:col-span-8 bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-col">
+        <h2 class="font-semibold text-base text-slate-800 border-b pb-2 mb-3">Xem trước bản vẽ</h2>
+        <div class="flex-1 border border-slate-300 rounded-lg bg-white overflow-auto flex items-center justify-center p-2 min-h-[500px]">
+          <svg id="schematic-svg" class="w-full h-auto" style="min-width: 800px;" xmlns="http://www.w3.org/2000/svg">
+            <!-- Đồ họa sơ đồ được sinh tại đây -->
+          </svg>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Mảng dữ liệu mặc định ban đầu
+    let branches = [
+      { name: "GIAN HÀNG 01", power: "5000W", breaker: "RCBO 2P/1N 63A", cable: "CU/XLPE/PVC (2x4) + E(1x2.5) mm2" },
+      { name: "GIAN HÀNG 02", power: "5000W", breaker: "RCBO 2P/1N 63A", cable: "CU/XLPE/PVC (2x4) + E(1x2.5) mm2" },
+      { name: "GIAN HÀNG 03", power: "5000W", breaker: "RCBO 2P/1N 63A", cable: "CU/XLPE/PVC (2x4) + E(1x2.5) mm2" },
+      { name: "GIAN HÀNG 04", power: "5000W", breaker: "RCBO 2P/1N 63A", cable: "CU/XLPE/PVC (2x4) + E(1x2.5) mm2" },
+      { name: "GIAN HÀNG 05", power: "5000W", breaker: "RCBO 2P/1N 63A", cable: "CU/XLPE/PVC (2x4) + E(1x2.5) mm2" },
+      { name: "GIAN HÀNG 06", power: "5000W", breaker: "RCBO 2P/1N 63A", cable: "CU/XLPE/PVC (2x4) + E(1x2.5) mm2" },
+      { name: "GIAN HÀNG 07", power: "5000W", breaker: "RCBO 2P/1N 63A", cable: "CU/XLPE/PVC (2x4) + E(1x2.5) mm2" },
+      { name: "GIAN HÀNG 08", power: "5000W", breaker: "RCBO 2P/1N 63A", cable: "CU/XLPE/PVC (2x4) + E(1x2.5) mm2" }
+    ];
+
+    const container = document.getElementById('branches-list');
+
+    // Hàm render danh sách input các nhánh phụ tải
+    function renderBranchInputs() {
+      container.innerHTML = '';
+      branches.forEach((b, idx) => {
+        const item = document.createElement('div');
+        item.className = 'p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2 relative';
+        item.innerHTML = `
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-bold text-slate-600">Nhánh #${idx + 1}</span>
+            ${branches.length > 1 ? `<button onclick="removeBranch(${idx})" class="text-red-500 hover:text-red-700 text-xs font-semibold">Xóa</button>` : ''}
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-500 font-medium">Tên nhánh</label>
+              <input type="text" value="${b.name}" oninput="updateBranch(${idx}, 'name', this.value)" class="w-full border rounded px-2 py-1 text-xs">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-500 font-medium">Công suất</label>
+              <input type="text" value="${b.power}" oninput="updateBranch(${idx}, 'power', this.value)" class="w-full border rounded px-2 py-1 text-xs">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-500 font-medium">Át nhánh</label>
+              <input type="text" value="${b.breaker}" oninput="updateBranch(${idx}, 'breaker', this.value)" class="w-full border rounded px-2 py-1 text-xs">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-500 font-medium">Dây dẫn</label>
+              <input type="text" value="${b.cable}" oninput="updateBranch(${idx}, 'cable', this.value)" class="w-full border rounded px-2 py-1 text-xs">
+            </div>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function updateBranch(index, field, value) {
+      branches[index][field] = value;
+    }
+
+    function removeBranch(index) {
+      branches.splice(index, 1);
+      renderBranchInputs();
+      drawSchematic();
+    }
+
+    document.getElementById('btn-add-branch').addEventListener('click', () => {
+      const idx = branches.length + 1;
+      const numStr = idx < 10 ? `0${idx}` : `${idx}`;
+      branches.push({
+        name: `GIAN HÀNG ${numStr}`,
+        power: '5000W',
+        breaker: 'RCBO 2P/1N 63A',
+        cable: 'CU/XLPE/PVC (2x4) + E(1x2.5) mm2'
+      });
+      renderBranchInputs();
+      drawSchematic();
+    });
+
+    document.getElementById('btn-apply-count').addEventListener('click', () => {
+      const count = parseInt(document.getElementById('quick-count').value, 10) || 1;
+      branches = [];
+      for (let i = 1; i <= count; i++) {
+        const numStr = i < 10 ? `0${i}` : `${i}`;
+        branches.push({
+          name: `GIAN HÀNG ${numStr}`,
+          power: '5000W',
+          breaker: 'RCBO 2P/1N 63A',
+          cable: 'CU/XLPE/PVC (2x4) + E(1x2.5) mm2'
+        });
+      }
+      renderBranchInputs();
+      drawSchematic();
+    });
+
+    // ==========================================
+    // BỘ MÁY VẼ SƠ ĐỒ NGUYÊN LÝ DẠNG VECTOR (SVG)
+    // ==========================================
+    function drawSchematic() {
+      const svg = document.getElementById('schematic-svg');
+      const panelName = document.getElementById('panel-name').value;
+      const mainBreaker = document.getElementById('main-breaker').value;
+      const mainCable = document.getElementById('main-cable').value;
+
+      // Tính toán kích thước bản vẽ tự động theo số nhánh
+      const branchWidth = 85;
+      const leftMargin = 100;
+      const rightMargin = 120;
+      const totalWidth = Math.max(1000, leftMargin + branches.length * branchWidth + rightMargin);
+      const totalHeight = 700;
+
+      svg.setAttribute('viewBox', `0 0 ${totalWidth} ${totalHeight}`);
+      svg.innerHTML = '';
+
+      const ns = "http://www.w3.org/2000/svg";
+      function el(tag, attrs) {
+        const elem = document.createElementNS(ns, tag);
+        for (let k in attrs) elem.setAttribute(k, attrs[k]);
+        return elem;
+      }
+
+      // 1. Khung bản vẽ tiêu chuẩn kỹ thuật
+      svg.appendChild(el('rect', { x: 10, y: 10, width: totalWidth - 20, height: totalHeight - 20, fill: '#ffffff', stroke: '#111827', 'stroke-width': '2.5' }));
+      svg.appendChild(el('rect', { x: 20, y: 20, width: totalWidth - 40, height: totalHeight - 40, fill: 'none', stroke: '#111827', 'stroke-width': '1.2' }));
+
+      // 2. Khung Tủ điện chính
+      const panelBoxX = leftMargin - 30;
+      const panelBoxY = 220;
+      const panelBoxW = (branches.length * branchWidth) + 60;
+      const panelBoxH = 200;
+      svg.appendChild(el('rect', { x: panelBoxX, y: panelBoxY, width: panelBoxW, height: panelBoxH, fill: 'none', stroke: '#1e293b', 'stroke-width': '1.5' }));
+
+      // Tên tủ
+      const textPanel = el('text', { x: panelBoxX + 15, y: panelBoxY + 30, 'font-size': '16', 'font-weight': 'bold', fill: '#0f172a', 'font-family': 'monospace' });
+      textPanel.textContent = panelName;
+      svg.appendChild(textPanel);
+
+      // 3. Đường nguồn tổng cấp vào
+      const incomerX = panelBoxX + (panelBoxW / 2);
+      svg.appendChild(el('line', { x1: 50, y1: 120, x2: totalWidth - 50, y2: 120, stroke: '#94a3b8', 'stroke-width': '1' }));
+      
+      // Mũi tên nguồn vào
+      svg.appendChild(el('polygon', { points: `${incomerX},120 ${incomerX - 7},105 ${incomerX + 7},105`, fill: '#0f172a' }));
+      svg.appendChild(el('circle', { cx: incomerX, cy: 95, r: 12, fill: 'none', stroke: '#0f172a', 'stroke-width': '1.5' }));
+      const txtIncomerNum = el('text', { x: incomerX, y: 100, 'text-anchor': 'middle', 'font-size': '12', 'font-weight': 'bold' });
+      txtIncomerNum.textContent = '1';
+      svg.appendChild(txtIncomerNum);
+
+      // Dây vào tủ và Át tổng
+      svg.appendChild(el('line', { x1: incomerX, y1: 120, x2: incomerX, y2: 360, stroke: '#0f172a', 'stroke-width': '2' }));
+
+      // Ký hiệu Át tổng
+      svg.appendChild(el('rect', { x: incomerX - 10, y: 250, width: 20, height: 26, fill: '#ffffff', stroke: '#0f172a', 'stroke-width': '1.5' }));
+      svg.appendChild(el('line', { x1: incomerX - 6, y1: 270, x2: incomerX + 6, y2: 256, stroke: '#0f172a', 'stroke-width': '1.8' }));
+      
+      // Chú thích Át tổng & Cáp vào
+      const txtBreaker = el('text', { x: incomerX + 16, y: 260, 'font-size': '10', 'font-weight': 'bold', fill: '#0f172a', 'font-family': 'sans-serif' });
+      txtBreaker.textContent = mainBreaker;
+      svg.appendChild(txtBreaker);
+
+      const txtCable = el('text', { x: incomerX + 30, y: 160, 'font-size': '11', fill: '#334155', 'font-family': 'monospace' });
+      txtCable.textContent = mainCable;
+      svg.appendChild(txtCable);
+      svg.appendChild(el('polyline', { points: `${incomerX + 5},170 ${incomerX + 25},163 ${incomerX + 250},163`, fill: 'none', stroke: '#64748b', 'stroke-width': '1' }));
+
+      // 4. Thanh cái chính (Busbar)
+      const busbarY = 360;
+      const busbarStartX = leftMargin;
+      const busbarEndX = leftMargin + (branches.length - 1) * branchWidth;
+      svg.appendChild(el('line', { x1: busbarStartX - 20, y1: busbarY, x2: busbarEndX + 20, y2: busbarY, stroke: '#0f172a', 'stroke-width': '3.5' }));
+
+      // 5. Vẽ từng nhánh phụ tải
+      branches.forEach((b, idx) => {
+        const x = leftMargin + idx * branchWidth;
+
+        // Điểm nối từ thanh cái xuống
+        svg.appendChild(el('circle', { cx: x, cy: busbarY, r: 3.5, fill: '#0f172a' }));
+        svg.appendChild(el('line', { x1: x, y1: busbarY, x2: x, y2: 480, stroke: '#0f172a', 'stroke-width': '1.5' }));
+
+        // Ký hiệu át nhánh (RCBO/MCB)
+        svg.appendChild(el('rect', { x: x - 8, y: 385, width: 16, height: 22, fill: '#ffffff', stroke: '#0f172a', 'stroke-width': '1.2' }));
+        svg.appendChild(el('line', { x1: x - 5, y1: 402, x2: x + 5, y2: 390, stroke: '#0f172a', 'stroke-width': '1.5' }));
+
+        // Text thông số át nhánh (xoay dọc hoặc text nhỏ)
+        const txtB = el('text', { x: x + 10, y: 398, 'font-size': '8', fill: '#334155', 'font-family': 'sans-serif' });
+        txtB.textContent = b.breaker.split(' ')[0] || 'MCB';
+        svg.appendChild(txtB);
+
+        // Khối tải (Hộp chữ nhật đứng chứa tên và công suất)
+        const loadBoxY = 480;
+        const loadBoxW = 34;
+        const loadBoxH = 120;
+        svg.appendChild(el('rect', { x: x - (loadBoxW / 2), y: loadBoxY, width: loadBoxW, height: loadBoxH, fill: '#f8fafc', stroke: '#0f172a', 'stroke-width': '1.5' }));
+
+        // Chữ xoay dọc trong ô tải: "GIAN HÀNG XX - 5000W"
+        const txtLoad = el('text', {
+          x: x + 4,
+          y: loadBoxY + 10,
+          'font-size': '10',
+          'font-weight': 'bold',
+          'font-family': 'monospace',
+          'writing-mode': 'vertical-rl',
+          fill: '#0f172a'
+        });
+        txtLoad.textContent = `${b.name} - ${b.power}`;
+        svg.appendChild(txtLoad);
+      });
+
+      // 6. Khung tên bản vẽ tiêu chuẩn ở góc phải dưới
+      const titleW = 280;
+      const titleH = 45;
+      const titleX = totalWidth - 20 - titleW;
+      const titleY = totalHeight - 20 - titleH;
+      svg.appendChild(el('rect', { x: titleX, y: titleY, width: titleW, height: titleH, fill: '#ffffff', stroke: '#111827', 'stroke-width': '1.2' }));
+      const mainTitle = el('text', { x: titleX + 15, y: titleY + 28, 'font-size': '13', 'font-weight': 'bold', fill: '#0f172a', 'font-family': 'sans-serif' });
+      mainTitle.textContent = "SƠ ĐỒ NGUYÊN LÝ CẤP ĐIỆN";
+      svg.appendChild(mainTitle);
+    }
+
+    // ==========================================
+    // CHỨC NĂNG XUẤT FILE PDF
+    // ==========================================
+    document.getElementById('btn-export-pdf').addEventListener('click', async () => {
+      const svg = document.getElementById('schematic-svg');
+      const { jsPDF } = window.jspdf;
+      
+      // Tạo file PDF khổ A3 ngang
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a3' });
+      
+      // Dùng svg2pdf để giữ nguyên độ sắc nét vector
+      await pdf.svg(svg, {
+        x: 20,
+        y: 20,
+        width: 1150,
+        height: 780
+      });
+      
+      pdf.save("So-Do-Nguyen-Ly-Dien.pdf");
+    });
+
+    // ==========================================
+    // CHỨC NĂNG XUẤT FILE AUTOCAD (.DXF)
+    // ==========================================
+    document.getElementById('btn-export-dxf').addEventListener('click', () => {
+      const panelName = document.getElementById('panel-name').value;
+      const mainBreaker = document.getElementById('main-breaker').value;
+      const mainCable = document.getElementById('main-cable').value;
+
+      // Khởi tạo đối tượng bản vẽ DXF
+      const d = new Drawing();
+      d.setUnits('Millimeters');
+
+      const bWidth = 80;
+      const startX = 100;
+      const busY = 100;
+
+      // Vẽ thanh cái Busbar
+      const endX = startX + (branches.length - 1) * bWidth;
+      d.drawLine(startX - 20, busY, endX + 20, busY);
+
+      // Nhánh nguồn chính vào
+      const midX = (startX + endX) / 2;
+      d.drawLine(midX, busY, midX, busY + 120);
+      d.drawText(midX + 5, busY + 80, 5, 0, mainBreaker);
+      d.drawText(midX + 5, busY + 110, 5, 0, mainCable);
+
+      // Khung tủ điện
+      d.drawLine(startX - 40, busY - 30, endX + 40, busY - 30);
+      d.drawLine(endX + 40, busY - 30, endX + 40, busY + 130);
+      d.drawLine(endX + 40, busY + 130, startX - 40, busY + 130);
+      d.drawLine(startX - 40, busY + 130, startX - 40, busY - 30);
+      d.drawText(startX - 30, busY + 115, 6, 0, panelName);
+
+      // Vẽ từng nhánh tải trong CAD
+      branches.forEach((b, i) => {
+        const x = startX + i * bWidth;
+        d.drawLine(x, busY, x, busY - 60);
+
+        // Ký hiệu khối tải chữ nhật
+        d.drawLine(x - 15, busY - 60, x + 15, busY - 60);
+        d.drawLine(x + 15, busY - 60, x + 15, busY - 160);
+        d.drawLine(x + 15, busY - 160, x - 15, busY - 160);
+        d.drawLine(x - 15, busY - 160, x - 15, busY - 60);
+
+        // Ghi chú tải (xoay 90 độ để thẳng đứng dọc theo hộp)
+        d.drawText(x - 2, busY - 150, 4, 90, `${b.name} - ${b.power}`);
+        d.drawText(x + 5, busY - 30, 3.5, 0, b.breaker);
+      });
+
+      // Tải file về máy tính
+      const dxfContent = d.toDxfString();
+      const blob = new Blob([dxfContent], { type: 'application/dxf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'So-Do-Nguyen-Ly-Cap-Dien.dxf';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Lắng nghe sự kiện render
+    document.getElementById('btn-render').addEventListener('click', drawSchematic);
+
+    // Chạy render lần đầu tiên
+    renderBranchInputs();
+    drawSchematic();
+  </script>
+</body>
+</html>
